@@ -1,9 +1,9 @@
 ################################################################################
 # 6.100B Spring 2026
 # Problem Set 4 — Climate Change and Impacts
-# Name:
-# Collaborators:
-# Time:
+# Name: Jan Szmajda
+# Collaborators: None
+# Time: 11
 #
 # READ ME:
 # - Do NOT rename this file or change existing function headers.
@@ -60,7 +60,10 @@ def load_data(file_path):
 
     Returns a DataFrame.
     """
-    raise NotImplementedError("Not implemented yet")
+    if ".json" in str(file_path):
+        return pd.read_json(file_path)
+    elif ".csv" in str(file_path):
+        return pd.read_csv(file_path)
 
 
 def process_temperature_data(df):
@@ -71,8 +74,10 @@ def process_temperature_data(df):
 
     Returns a DataFrame.
     """
-    raise NotImplementedError("Not implemented yet")
-
+    # define the year columns and use pd.melt as in documentation
+    year_cols = [col for col in df.columns if col.isdigit()]
+    melted = pd.melt(frame=df, id_vars=["Country", "ISO3"], value_vars=year_cols, var_name="Year", value_name="Temperature")
+    return melted
 
 def process_population_data(df):
     """
@@ -82,7 +87,10 @@ def process_population_data(df):
 
     Returns a DataFrame.
     """
-    raise NotImplementedError("Not implemented yet")
+    # rename the columns accordingly and filter the year column between 1961-2024
+    df.rename(columns={"Entity":"Country","Code":"ISO3","Population (historical)":"Population"},inplace=True)
+    df = df[(df["Year"] >= 1961) & (df["Year"] <= 2024)]
+    return df
 
 
 def process_disaster_data(df):
@@ -93,7 +101,23 @@ def process_disaster_data(df):
 
     Returns a DataFrame.
     """
-    raise NotImplementedError("Not implemented yet")
+    climate_types = ["Drought", "Extreme temperature", "Flood", "Storm", "Wildfire"]
+
+    # filter for climate-related disaster types and exclude TOTAL rows
+    mask = df["Indicator"].apply(lambda x: any(t in x for t in climate_types) and "TOTAL" not in x)
+    df = df[mask]
+
+    # get year columns
+    year_cols = [col for col in df.columns if col.isdigit()]
+
+    # melt to long format
+    melted = pd.melt(frame=df,id_vars=["Country", "ISO3"],value_vars=year_cols,var_name="Year",value_name="Count")
+
+    # aggregate total disasters per country-year pair
+    aggregated = melted.groupby(["Country", "ISO3", "Year"], as_index=False)["Count"].sum()
+    aggregated.rename(columns={"Count": "Total Climate-Related Disasters"}, inplace=True)
+
+    return aggregated[["Country", "ISO3", "Year", "Total Climate-Related Disasters"]]
 
 
 def country_to_continent(country_code):
@@ -108,17 +132,97 @@ def country_to_continent(country_code):
     Returns a two-letter code, one of "AF", "AS", "EU",
     "NA", "SA", or "OC".
     """
-    raise NotImplementedError("Not implemented yet")
+    # handle ISO3 codes not recognized by pycountry_convert
+    special = {"ANT": "NA", "AZO": "EU", "DDR": "EU", "DFR": "EU",
+    "ESH": "AF", "PCN": "OC", "SCG": "EU", "SPI": "AS","SUN": "EU",
+    "SXM": "NA", "TLS": "AS", "VAT": "EU"}
+
+    if country_code in special:
+        return special[country_code]
+    alpha2 = pc.country_alpha3_to_country_alpha2(country_code)
+    return pc.country_alpha2_to_continent_code(alpha2)
+
 
 
 # Implement your code below. Do not leave code in the global scope
 # (i.e. outside of functions), unless it's in the main block below.
 
 if __name__ == "__main__":
-    # You can use this main block to test your functions.
-    pass
+    df_disasters = load_data("data/disasters.csv")
+    df_population = load_data("data/population.json")
+    df_temp = load_data("data/temp_change.csv")
 
-    # Example:
-    # df_temp = load_data("temp_change.csv")
-    # processed_df_temp = process_temperature_data(df_temp)
-    # print(processed_df_temp.head())
+    ### Part 1 Test Code ###
+    # print(df_disasters)
+    # x = process_disaster_data(df_disasters)
+    # print(x)
+
+    # print(df_population)
+    # x = process_population_data(df_population)
+    # print(x)
+
+    # # 1a unique countries
+    # print("disasters:", df_disasters['ISO3'].nunique())
+    # print("population:", df_population['Code'].nunique())
+    # print("temp_change:", df_temp['ISO3'].nunique())
+
+    # # 1a missing values
+    # print("\ndisasters missing:")
+    # print(df_disasters.isnull().sum()[df_disasters.isnull().sum() > 0])
+
+    # print("\npopulation missing:")
+    # print(df_population.isnull().sum()[df_population.isnull().sum() > 0])
+
+    # print("\ntemp_change missing:")
+    # print(df_temp.isnull().sum()[df_temp.isnull().sum() > 0])
+
+    ### Part 2 Code ###
+    temp_melted = process_temperature_data(df_temp)
+    temp_melted["Year"] = temp_melted["Year"].astype(int)
+    temp_melted["Temperature"] = pd.to_numeric(temp_melted["Temperature"], errors="coerce")
+
+    # average temperature anomaly per year ignoring NaN
+    yearly_avg = temp_melted.groupby("Year")["Temperature"].mean()
+
+    # 5 year moving average using window=5, min_periods=1
+    moving_avg = yearly_avg.rolling(window=5, min_periods=1).mean()
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(yearly_avg.index, yearly_avg.values, label="Annual Mean", color="blue", alpha=0.7)
+    plt.plot(moving_avg.index, moving_avg.values, label="5-Year Moving Average", color="orange", linewidth=2)
+    plt.xlabel("Year")
+    plt.ylabel("Temperature Anomaly in Celsius")
+    plt.title("Global Mean Temperature Anomaly Over Time")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("Global Mean Temperature Anomaly Over Time.png")
+    plt.show()
+
+    ### Part 3 Code ###
+    disaster_data = process_disaster_data(df_disasters)
+    disaster_data["Year"] = disaster_data["Year"].astype(int)
+
+    # total disasters per year globally
+    yearly_disasters = disaster_data.groupby("Year")["Total Climate-Related Disasters"].sum()
+
+    # only plot years present in both datasets
+    common_years = sorted(set(yearly_avg.index) & set(yearly_disasters.index))
+    temp_common = yearly_avg.loc[common_years]
+    dis_common = yearly_disasters.loc[common_years]
+
+    fig, ax1 = plt.subplots(figsize=(10, 6))
+    ax1.plot(common_years, temp_common.values, color="blue", label="Avg Temperature Anomaly")
+    ax1.set_xlabel("Year")
+    ax1.set_ylabel("Temperature Anomaly in Celsius", color="blue")
+    ax1.tick_params(axis="y", labelcolor="blue")
+
+    ax2 = ax1.twinx()
+    ax2.plot(common_years, dis_common.values, color="red", label="Total Climate-Related Disasters")
+    ax2.set_ylabel("Number of Disasters", color="red")
+    ax2.tick_params(axis="y", labelcolor="red")
+
+    plt.title("Global Temperature Anomaly vs Climate-Related Disasters")
+    fig.legend(loc="upper left", bbox_to_anchor=(0.12, 0.88))
+    plt.tight_layout()
+    plt.savefig("Temperature vs Disasters.png")
+    plt.show()
