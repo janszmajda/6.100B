@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 import pycountry_convert as pc
 import pymannkendall as mk
-import sklearn
+from sklearn.metrics import r2_score
 
 # DO NOT MODIFY ANY OF THE FUNCTION HEADERS BELOW
 cheese_consumption_by_year = [
@@ -279,8 +279,6 @@ if __name__ == "__main__":
     print("CV (Disasters):", cv_dis)
 
     ### Part 6 Code ###
-    from sklearn.metrics import r2_score
-
     # global average temperature anomaly per year (reused yearly_avg from Part 2)
     years = yearly_avg.index.astype(float)
     temps = yearly_avg.values
@@ -312,3 +310,46 @@ if __name__ == "__main__":
     best_coeffs = np.polyfit(years, temps, 10)
     best_poly = np.poly1d(best_coeffs)
     print(f"Predicted temperature anomaly in 2030: {best_poly(2030):.4f} degrees C")
+
+    ### Part 7 Code ###
+    pop_data = process_population_data(df_population)
+    cheese = np.array(cheese_consumption_by_year)
+    cheese_years = list(range(1970, 1995))
+
+    # find countries with population data for every year 1970-1994
+    pop_filtered = pop_data[pop_data["Year"].isin(cheese_years)]
+    country_year_counts = pop_filtered.groupby("ISO3")["Year"].nunique()
+    valid_countries = country_year_counts[country_year_counts == 25].index
+
+    # compute Pearson correlation for each valid country
+    best_corr = -2
+    best_country = None
+    best_pop = None
+    for iso in valid_countries:
+        country_pop = pop_filtered[pop_filtered["ISO3"] == iso].sort_values("Year")["Population"].values
+        corr = np.corrcoef(cheese, country_pop)[0, 1]
+        if corr > best_corr:
+            best_corr = corr
+            best_country = iso
+            best_pop = country_pop
+
+    country_name = pop_filtered[pop_filtered["ISO3"] == best_country]["Country"].iloc[0]
+    print(f"Highest correlation: {country_name} ({best_country}), r = {best_corr:.4f}")
+
+    # stacked line plot with scaled population
+    fig, ax1 = plt.subplots(figsize=(10, 6))
+    ax1.plot(cheese_years, cheese, color="blue", label="U.S. Cheese Consumption (lbs/capita)")
+    ax1.set_xlabel("Year")
+    ax1.set_ylabel("Cheese Consumption (lbs/capita)", color="blue")
+    ax1.tick_params(axis="y", labelcolor="blue")
+
+    ax2 = ax1.twinx()
+    ax2.plot(cheese_years, best_pop, color="red", label=f"{country_name} Population")
+    ax2.set_ylabel(f"{country_name} Population", color="red")
+    ax2.tick_params(axis="y", labelcolor="red")
+
+    plt.title(f"U.S. Cheese Consumption vs {country_name} Population (1970-1994)")
+    fig.legend(loc="upper left", bbox_to_anchor=(0.12, 0.88))
+    plt.tight_layout()
+    plt.savefig("Cheese vs Population.png")
+    plt.show()
