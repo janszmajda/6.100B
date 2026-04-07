@@ -226,3 +226,89 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.savefig("Temperature vs Disasters.png")
     plt.show()
+
+    ### Part 4b Code ###
+    # add continent column to temperature and disaster data
+    temp_melted["Continent"] = temp_melted["ISO3"].apply(country_to_continent)
+    disaster_data["Continent"] = disaster_data["ISO3"].apply(country_to_continent)
+
+    continent_names = {"AF": "Africa", "AS": "Asia", "EU": "Europe",
+                       "NA": "North America", "SA": "South America", "OC": "Oceania"}
+
+    # average temperature anomaly by continent
+    plt.figure(figsize=(10, 6))
+    for code, name in continent_names.items():
+        cont_temp = temp_melted[temp_melted["Continent"] == code].groupby("Year")["Temperature"].mean()
+        plt.plot(cont_temp.index, cont_temp.values, label=name)
+    plt.xlabel("Year")
+    plt.ylabel("Temperature Anomaly in Celsius")
+    plt.title("Average Temperature Anomaly by Continent (1961-2024)")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("Temperature Anomaly by Continent.png")
+    plt.show()
+
+    # total disasters by continent
+    plt.figure(figsize=(10, 6))
+    for code, name in continent_names.items():
+        cont_dis = disaster_data[disaster_data["Continent"] == code].groupby("Year")["Total Climate-Related Disasters"].sum()
+        plt.plot(cont_dis.index, cont_dis.values, label=name)
+    plt.xlabel("Year")
+    plt.ylabel("Total Climate-Related Disasters")
+    plt.title("Total Climate-Related Disasters by Continent (1980-2024)")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("Disasters by Continent.png")
+    plt.show()
+
+    ### Part 5 Code ###
+    # Mann-Kendall trend test on global temperature anomaly and disasters
+    mk_temp = mk.original_test(temp_common.values)
+    mk_dis = mk.original_test(dis_common.values)
+    print("Mann-Kendall test, Temperature:", mk_temp.trend, "p =", mk_temp.p)
+    print("Mann-Kendall test, Disasters:", mk_dis.trend, "p =", mk_dis.p)
+
+    # Pearson correlation between the two series
+    correlation = np.corrcoef(temp_common.values, dis_common.values)[0, 1]
+    print("Pearson correlation:", correlation)
+
+    # Coefficient of variation for each series
+    cv_temp = np.std(temp_common.values) / np.mean(temp_common.values)
+    cv_dis = np.std(dis_common.values) / np.mean(dis_common.values)
+    print("CV (Temperature):", cv_temp)
+    print("CV (Disasters):", cv_dis)
+
+    ### Part 6 Code ###
+    from sklearn.metrics import r2_score
+
+    # global average temperature anomaly per year (reused yearly_avg from Part 2)
+    years = yearly_avg.index.astype(float)
+    temps = yearly_avg.values
+
+    degrees = [1, 2, 5, 10]
+
+    plt.figure(figsize=(10, 6))
+    plt.scatter(years, temps, color="black", s=10, label="Data", zorder=5)
+
+    for deg in degrees:
+        coeffs = np.polyfit(years, temps, deg)
+        poly = np.poly1d(coeffs)
+        y_pred = poly(years)
+        r2 = r2_score(temps, y_pred)
+        # smooth curve for plotting
+        x_smooth = np.linspace(years.min(), years.max(), 300)
+        plt.plot(x_smooth, poly(x_smooth), label=f"Degree {deg} (R^2 = {r2:.4f})")
+        print(f"Degree {deg}: R^2 = {r2:.4f}")
+
+    plt.xlabel("Year")
+    plt.ylabel("Temperature Anomaly in Celsius")
+    plt.title("Polynomial Regression of Global Temperature Anomaly")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("Polynomial Regression.png")
+    plt.show()
+
+    # predict 2030 using best-fit model (degree 10)
+    best_coeffs = np.polyfit(years, temps, 10)
+    best_poly = np.poly1d(best_coeffs)
+    print(f"Predicted temperature anomaly in 2030: {best_poly(2030):.4f} degrees C")
